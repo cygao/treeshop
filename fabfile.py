@@ -1,5 +1,5 @@
 """
-Treehouse Workshop
+Treeshop: The Treehouse Workshop
 
 Experimental Python Fabric file to spin up machines,
 copy files to them, run a dockerized pipeline, and
@@ -12,21 +12,32 @@ password.
 For Azure you must run docker-machine first on the command
 line to log in via URL
 """
+import os
 import re
 import csv
 from fabric.api import env, local, run, runs_once
 
 """
 Setup the fabric hosts environment using docker-machine
-ip addresses and ssh keys. This is enable fabric run and sudo
+ip addresses and ssh keys. This enables fabric run and sudo
 to work as expected. An alternative would be to use the
 docker-machine ssh alternative but that's not as pretty.
+Note we use ips in 'hosts' as the machine names are
+not resolvable.
 """
 env.user = "ubuntu"
+env.hostnames = local("docker-machine ls --format '{{.Name}}'", capture=True).split("\n")
 env.hosts = re.findall(r'[0-9]+(?:\.[0-9]+){3}',
                        local("docker-machine ls --format '{{.URL}}'", capture=True))
-env.key_filename = ["~/.docker/machine/machines/{}/id_rsa".format(m) for m in
-                    local("docker-machine ls --format '{{.Name}}'", capture=True).split("\n")]
+env.key_filename = ["~/.docker/machine/machines/{}/id_rsa".format(m) for m in env.hostnames]
+
+
+@runs_once
+def machines():
+    """ Print hostname and ips of each machine """
+    print "Hostnames:", env.hostnames
+    print "IPs:", env.hosts
+    print "SSH Keys:", env.key_filename
 
 
 def hello():
@@ -46,30 +57,23 @@ def create(count=1, flavor="m1.small"):
                 --openstack-net-name treehouse-net \
                 --openstack-floatingip-pool ext-net \
                 --openstack-image-name Ubuntu-16.04-LTS-x86_64 \
-                treehouse-pipeline-{}
-              """.format(flavor, i))
+                {}-treeshop-{}
+              """.format(flavor, os.environ["USER"], i))
         # Add ubuntu to docker group so we can do run("docker...") vs. sudo
-        local("docker-machine ssh {} sudo gpasswd -a ubuntu".format(i))
-
-
-@runs_once
-def ips():
-    """ Print IPs of each machine """
-    print env.hosts
+        local("docker-machine ssh {}-treeshop-{} sudo gpasswd -a ubuntu docker"
+              .format(os.environ["USER"], i))
 
 
 def terminate():
     """ Terminate all machines """
-    hosts = local("docker-machine ls --quiet", capture=True).strip()
-    hosts = hosts.split("\n") if hosts else []
-    for host in hosts:
+    for host in env.hostnames:
         local("docker-machine stop -f {}".format(host))
         local("docker-machine rm -f {}".format(host))
 
 
+@runs_once
 def defuse(manifest):
     """ Run defuse on all fastq pairs in 'manifest' """
-    print manifest
     with open(manifest) as f:
         for row in csv.DictReader(f, delimiter="\t"):
             for file in row["samples"].split(","):
