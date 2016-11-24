@@ -1,2 +1,6 @@
-# treeshop
-Scripts and small distributed task tools for use in the Treehouse group to run small batches outside the core
+# Treeshop
+
+Experimental scripts and tools used in the Treehouse group
+to run small distributed pipeline runs outside of the core
+on our internal openstack environment as well as cloud
+providers.
