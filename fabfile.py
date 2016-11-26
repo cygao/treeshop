@@ -20,12 +20,9 @@ from fabric.api import env, local, run, runs_once, parallel, warn_only
 from fabric.contrib.files import exists
 
 """
-Setup the fabric hosts environment using docker-machine
-ip addresses and ssh keys. This enables fabric run and sudo
-to work as expected. An alternative would be to use the
-docker-machine ssh alternative but that's not as pretty.
-Note we use ips in 'hosts' as the machine names are
-not resolvable.
+Setup the fabric hosts environment using docker-machine ip addresses as hostnames are not
+resolvable. Also point to all the per machine ssh keys. An alternative would be to use one key but
+on openstack the driver deletes it on termination.
 """
 env.user = "ubuntu"
 env.hostnames = local("docker-machine ls --format '{{.Name}}'", capture=True).split("\n")
@@ -107,7 +104,7 @@ def defuse(manifest):
     samples = list(csv.DictReader(open(manifest), delimiter="\t"))
 
     # Split manifest up among all hosts for poor mans round robin task allocation
-    for i in range(env.hosts.index(env.host), len(samples), len(env.hostnames)):
+    for i in range(env.hosts.index(env.host), len(samples), len(env.hosts)):
         print "Running defuse on {} sample: {}".format(i, samples[i]["Submitter Sample ID"])
         fastqs = samples[i]["File Path"].split(",")
         for fastq in fastqs:
@@ -124,7 +121,7 @@ def defuse(manifest):
             docker run -it --rm --name defuse \
                 -v /mnt/inputs:/data \
                 -v /mnt/outputs:/outputs \
-                jpfeil/defuse-pipeline:latest \
+                jpfeil/defuse-pipeline:gmap-latest \
                 -1 {} -2 {} \
                 -o /outputs \
                 -p `nproc` \
@@ -134,3 +131,36 @@ def defuse(manifest):
                        samples[i]["Submitter Sample ID"]))
         # For now just do one sample
         return
+
+
+# @parallel
+# def qc(manifest):
+#     """ QC on all the bams in the manifest """
+#     samples = list(csv.DictReader(open(manifest), delimiter="\t"))
+
+#     # Split manifest up among all hosts for poor mans round robin task allocation
+#     for i in range(env.hosts.index(env.host), len(samples), len(env.hosts)):
+#         print "Running qc on {} sample: {}".format(i, samples[i]["Submitter Sample ID"])
+#         dest = "/mnt/inputs/{}".format(os.path.basename(fastq))
+#         if exists(os.path.splitext(dest)[0]):
+#             print "Skipping, {} already exists".format(dest)
+#         else:
+#             print "Copying {} to {}".format(fastq, dest)
+#             local("docker-machine scp {} {}:{}".format(fastq, env.hostnames[0], dest))
+#             run("gunzip {}".format(dest))
+#         with warn_only():
+#             run("docker stop defuse && docker rm defuse")
+#         run("""
+#             docker run -it --rm --name defuse \
+#                 -v /mnt/inputs:/data \
+#                 -v /mnt/outputs:/outputs \
+#                 jpfeil/defuse-pipeline:gmap-latest \
+#                 -1 {} -2 {} \
+#                 -o /outputs \
+#                 -p `nproc` \
+#                 -n {}
+#             """.format(os.path.basename(os.path.splitext(fastqs[0])[0]),
+#                        os.path.basename(os.path.splitext(fastqs[1])[0]),
+#                        samples[i]["Submitter Sample ID"]))
+#         # For now just do one sample
+#         return
