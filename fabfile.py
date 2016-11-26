@@ -16,7 +16,7 @@ import os
 import re
 import datetime
 import csv
-from fabric.api import env, local, run, runs_once, parallel
+from fabric.api import env, local, run, runs_once, parallel, warn_only
 from fabric.contrib.files import exists
 
 """
@@ -87,48 +87,50 @@ def configure():
     run("sudo chown ubuntu:ubuntu /mnt/references")
 
 
-@parallel
 def defuse_references():
+    # wget won't work yet on azure
     # run("sudo wget -P /mnt/references http://ceph-gw-01.pod/references/defuse_index.tar.gz")
-    local("docker-machine scp"
-          "/pod/pstore/users/jpfeil/references/defuse_index.tar.gz {}:/mnt/references"
-          .format(env.host))
+    if not exists("/mnt/inputs/defuse_index"):
+        print "Copying defuse references"
+        local("docker-machine scp"
+              "/pod/pstore/users/jpfeil/references/defuse_index.tar.gz {}:/mnt/inputs"
+              .format(env.host))
+        print "Untarring defuse references"
+        run("tar -xvf /mnt/inputs/defuse_index.tar.gz")
+    else:
+        print "Defuse references already installed"
 
 
+@parallel
 def defuse(manifest):
     """ Run defuse on all the samples in 'manifest' """
-    with open(manifest) as f:
-        for row in csv.DictReader(f, delimiter="\t"):
-            for sample in row["File Path"].split(","):
-                dest = "/mnt/inputs/{}".format(os.path.basename(sample))
-                if exists(dest):
-                    print "Skipping, already exists".format(dest)
-                else:
-                    print "Copying {} to {}".format(sample, dest)
-                    local("docker-machine scp {} {}:{}".format(sample, env.hostnames[0], dest))
-            run("""
-                docker run -it --rm \
-                    -v /mnt/inputs:/data \
-                    -v /mnt/outputs:/outputs \
-                    -v /mnt/references/defuse_index:/data/defuse_index \
-                    jpfeil/defuse-pipeline:latest \
-                    -1 {} -2 {} \
-                    -o /outputs \
-                    -n {}
-                """.format(os.path.basename(row["File Path"].split(",")[0]),
-                           os.path.basename(row["File Path"].split(",")[1]),
-                           row["Submitter Sample ID"]))
-            return
+    samples = list(csv.DictReader(open(manifest), delimiter="\t"))
 
-
-def defuse_one():
-    run("""
-        docker run -it --rm \
-            -v /mnt/inputs:/data \
-            -v /mnt/outputs:/outputs \
-            -v /mnt/references/defuse_index:/data/defuse_index \
-            jpfeil/defuse-pipeline:latest \
-            -1 SRR1988322_1.fastq.gz -2 SRR1988322_2.fastq.gz \
-            -o /outputs \
-            -n SRR1988322
-        """)
+    # Split manifest up among all hosts for poor mans round robin task allocation
+    for i in range(env.hosts.index(env.host), len(samples), len(env.hostnames)):
+        print "Running defuse on {} sample: {}".format(i, samples[i]["Submitter Sample ID"])
+        fastqs = samples[i]["File Path"].split(",")
+        for fastq in fastqs:
+            dest = "/mnt/inputs/{}".format(os.path.basename(fastq))
+            if exists(os.path.splitext(dest)[0]):
+                print "Skipping, {} already exists".format(dest)
+            else:
+                print "Copying {} to {}".format(fastq, dest)
+                local("docker-machine scp {} {}:{}".format(fastq, env.hostnames[0], dest))
+                run("gunzip {}".format(dest))
+        with warn_only():
+            run("docker stop defuse && docker rm defuse")
+        run("""
+            docker run -it --rm --name defuse \
+                -v /mnt/inputs:/data \
+                -v /mnt/outputs:/outputs \
+                jpfeil/defuse-pipeline:latest \
+                -1 {} -2 {} \
+                -o /outputs \
+                -p `nproc` \
+                -n {}
+            """.format(os.path.basename(os.path.splitext(fastqs[0])[0]),
+                       os.path.basename(os.path.splitext(fastqs[1])[0]),
+                       samples[i]["Submitter Sample ID"]))
+        # For now just do one sample
+        return
