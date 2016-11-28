@@ -1,10 +1,10 @@
 ts := $(shell /bin/date "+%Y%m%d-%H%M%S")
 
 AZURE_FLAVOR=Standard_D1
-OS_FLAVOR=m1.small
+OPENSTACK_FLAVOR=m1.small
 
 create-openstack:
-	# Start an openstack docker-machine, specify size by make create-openstack OS_FLAVOR=m1.small
+	# Start an openstack docker-machine, specify size by make create-openstack OPENSTACK_FLAVOR=m1.small
 	docker-machine create --driver openstack \
 		--openstack-tenant-name treehouse \
 		--openstack-auth-url http://os-con-01.pod:5000/v2.0 \
@@ -12,7 +12,7 @@ create-openstack:
 		--openstack-net-name treehouse-net \
 		--openstack-floatingip-pool ext-net \
 		--openstack-image-name Ubuntu-16.04-LTS-x86_64 \
-		--openstack-flavor-name $(OS_FLAVOR) \
+		--openstack-flavor-name $(OPENSTACK_FLAVOR) \
 		$(USER)-treeshop-$(ts)
 	docker-machine ssh $(USER)-treeshop-$(ts) sudo gpasswd -a ubuntu docker
 
