@@ -1,4 +1,15 @@
 """
+                # get("outputs/star-fusion.fusion_candidates.final.whitelist.abridged",
+                #     "{}/{}.genelistonly.fusion".format(
+                #         outputs, sample_id))
+                # get("outputs/star-fusion.fusion_candidates.final.final.abridged",
+                #     "{}/{}.fusion".format(
+                #         outputs, sample_id))
+SAMPLEName/rnaseq/
+/fusion/ (two files
+/qc/bam
+
+
 Treeshop: The Treehouse Workshop
 
 Experimental Python Fabric file to spin up machines,
@@ -16,6 +27,8 @@ import os
 import re
 import datetime
 import csv
+import json
+import itertools
 from fabric.api import env, local, run, sudo, runs_once, parallel, warn_only, cd
 from fabric.contrib.files import exists
 from fabric.operations import put, get
@@ -41,24 +54,24 @@ def machines():
     print "SSH Keys:", env.key_filename
 
 
-def create(count=1, flavor="m1.small"):
-    """ Create 'count' (default=1) 'flavor' (default=m1.small) machines """
-    for i in range(0, int(count)):
-        name = "{}-treeshop-{}".format(os.environ["USER"],
-                                       datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-        local("""
-            docker-machine create --driver openstack \
-                --openstack-tenant-name treehouse \
-                --openstack-auth-url http://os-con-01.pod:5000/v2.0 \
-                --openstack-ssh-user ubuntu \
-                --openstack-flavor-name {} \
-                --openstack-net-name treehouse-net \
-                --openstack-floatingip-pool ext-net \
-                --openstack-image-name Ubuntu-16.04-LTS-x86_64 \
-                {}
-              """.format(flavor, name))
-        # Add ubuntu to docker group so we can do run("docker...") vs. sudo
-        local("docker-machine ssh {} sudo gpasswd -a ubuntu docker".format(name))
+# def create(count=1, flavor="m1.small"):
+#     """ Create 'count' (default=1) 'flavor' (default=m1.small) machines """
+#     for i in range(0, int(count)):
+#         name = "{}-treeshop-{}".format(os.environ["USER"],
+#                                        datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+#         local("""
+#             docker-machine create --driver openstack \
+#                 --openstack-tenant-name treehouse \
+#                 --openstack-auth-url http://os-con-01.pod:5000/v2.0 \
+#                 --openstack-ssh-user ubuntu \
+#                 --openstack-flavor-name {} \
+#                 --openstack-net-name treehouse-net \
+#                 --openstack-floatingip-pool ext-net \
+#                 --openstack-image-name Ubuntu-16.04-LTS-x86_64 \
+#                 {}
+#               """.format(flavor, name))
+#         # Add ubuntu to docker group so we can do run("docker...") vs. sudo
+#         local("docker-machine ssh {} sudo gpasswd -a ubuntu docker".format(name))
 
 
 def terminate():
@@ -91,16 +104,17 @@ def configure(verify="True"):
                   "starIndex_hg38_no_alt.tar.gz", "rsem_ref_hg38_no_alt.tar.gz"]:
             run("wget -nv -N http://hgdownload.soe.ucsc.edu/treehouse/reference/{}".format(r))
         if verify == "True":
-            put("rnaseq.md5")
-            run("md5sum -c rnaseq.md5")
-            put("defuse.md5")
-            run("md5sum -c defuse.md5")
+            put("refs.rnaseq.md5")
+            run("md5sum -c refs.rnaseq.md5")
+            put("refs.fusion.md5")
+            run("md5sum -c refs.fusion.md5")
 
 
 def _run_rnaseq(r1, r2, name):
-    run("tar -cf samples/{}.tar samples/{}.gz samples/{}.gz".format(name, r1, r2))
+    # RNASeq expects the fastqs tarred up...
+    run("tar -cf samples/{}.tar samples/{} samples/{}".format(name, r1, r2))
     run("""
-        docker run -it --rm --name rnaseq \
+        docker run --rm --name rnaseq \
             -v /mnt/data/outputs:/mnt/data/outputs \
             -v /mnt/data/samples:/samples \
             -v /mnt/data/references:/references \
@@ -112,24 +126,41 @@ def _run_rnaseq(r1, r2, name):
             --kallisto /references/kallisto_hg38.idx \
             --samples /samples/{}.tar
         """.format(name))
+    # Generates name.tar.gz so untar and put in rnaseq folder
+    run("tar -xzf outputs/{}.tar.gz -C outputs".format(name))
+    run("mv outputs/{} outputs/rnaseq".format(name))
+    return "quay.io/ucsc_cgl/rnaseq-cgl-pipeline:2.0.8"
 
 
-def _run_defuse(r1, r2, name):
+def _run_qc(bam):
+    run("mkdir outputs/qc")
     run("""
-        docker run -it --rm --name defuse \
+        docker run --rm --name qc \
+            -v /mnt/data/outputs/qc:/data \
+            -v {}:/data/rnaAligned.sortedByCoord.out.bam \
+            hbeale/treehouse_bam_qc:1.0 runQC.sh
+        """.format(bam))
+    return "hbeale/treehouse_bam_qc:1.0"
+
+
+def _run_fusion(r1, r2):
+    run("mkdir outputs/fusion")
+    run("""
+        docker run --rm --name fusion \
             -v /mnt/data:/data \
             jpfeil/star-fusion:0.0.1 \
             --CPU `nproc` \
             --genome_lib_dir references/STARFusion-GRCh38gencode23 \
-            --left_fq samples/{} --right_fq samples/{} --output_dir outputs/{}
-        """.format(r1, r2, name))
+            --left_fq samples/{} --right_fq samples/{} --output_dir outputs/fusion
+        """.format(r1, r2))
+    return "jpfeil/star-fusion:0.0.1"
 
 
-def _clean():
-    # Stop an existing processing
+def _reset_machine():
+    # Stop an existing processing and delete inputs and outputs
     with warn_only():
         run("docker stop rnaseq && docker rm rnaseq")
-        run("docker stop defuse && docker rm defuse")
+        run("docker stop fusion && docker rm fusion")
         run("docker stop qc && docker rm qc")
     sudo("rm -rf /mnt/data/samples/*")
     sudo("rm -rf /mnt/data/outputs/*")
@@ -137,84 +168,70 @@ def _clean():
 
 @parallel
 def process(manifest, outputs="/pod/pstore/groups/treehouse/treeshop/outputs",
-            rnaseq="True", qc="True", defuse="True"):
-    """ Run defuse on all the samples in 'manifest' """
-    samples = list(csv.DictReader(open(manifest), delimiter="\t"))
+            rnaseq="True", qc="True", fusion="True"):
+    """ Process on all the samples in 'manifest' """
 
-    # Split manifest up among all hosts for poor mans round robin task allocation
-    for i in range(env.hosts.index(env.host), len(samples), len(env.hosts)):
-        _clean()
+    # Each machine will process every #hosts samples
+    for sample in itertools.islice(csv.DictReader(open(manifest), delimiter="\t"),
+                                   start=env.hosts.index(env.host), step=len(env.hosts)):
+        sample_id = sample["Submitter Sample ID"]
+        sample_files = sample["File Path"].split(",")
+        print "{} processing {}".format(env.host, sample_id)
+
+        _reset_machine()
+
+        methods = {"user": os.environ["USER"],
+                   "start": datetime.datetime.utcnow().isoformat(),
+                   "pipelines": []}
         with cd("/mnt/data"):
-            sample = samples[i]
+            # clear results - should we do this or create a new
+            # local("rm -rf {}/{}".format(outputs, sample_id)
 
             # Copy fastqs
-            if (rnaseq == "True") or (defuse == "True"):
-                fastqs = sample["File Path"].split(",")
-                for fastq in fastqs:
+            if (rnaseq == "True") or (fusion == "True"):
+                if len(sample_files) != 2:
+                    abort("Expected 2 samples files")
+
+                for fastq in sample_files:
                     if not exists("samples/{}".format(os.path.basename(fastq))):
                         put(fastq, "samples/{}".format(os.path.basename(fastq)))
-                        run("gunzip -k samples/{}".format(os.path.basename(fastq)))
+                r1, r2 = [os.path.basename(f) for f in sample_files]
 
-            # Copy bam as if it came from the output of RNASeq
+            # If only running qc then copy bam as if it came from rnaseq
             if (qc == "True") and (rnaseq != "True"):  # qc only so copy bam
-                if not sample["File Path"].endwith(".bam"):
-                    abort("Expected bam for row {} {}".format(i, sample["Submitter Sample ID"]))
-                put(sample["File Path"], "outputs/")
+                if not sample_files[0].endwith(".bam"):
+                    abort("Expected bam for {}".format(sample_id))
+                put(sample_files[0],
+                    "outputs/{}.sorted.bam".format(sample_id))
 
-            # Run each pipeline
+            # Create folder on storage for results named after sample id
+            results = "{}/{}".format(outputs, sample_id)
+            local("mkdir -p {}".format(results))
+
+            # rnaseq
             if rnaseq == "True":
-                _run_rnaseq(os.path.basename(os.path.splitext(fastqs[0])[0]),
-                            os.path.basename(os.path.splitext(fastqs[1])[0]),
-                            sample["Submitter Sample ID"])
-                get("outputs/{}.tar.gz", outputs)
+                methods["pipelines"].append(_run_rnaseq(r1, r2, sample_id))
+                get("outputs/rnaseq", results)
 
-            if defuse == "True":
-                _run_defuse(os.path.basename(os.path.splitext(fastqs[0])[0]),
-                            os.path.basename(os.path.splitext(fastqs[1])[0]),
-                            sample["Submitter Sample ID"])
-                get("outputs/star-fusion.fusion_candidates.final.whitelist.abridged",
-                    "{}/{}.defuse.whitelist.abridged".format(
-                        outputs, sample["Submitter Sample ID"]))
-                get("outputs/star-fusion.fusion_candidates.final.final.abridged",
-                    "{}/{}.defuse.final.abridged".format(
-                        outputs, sample["Submitter Sample ID"]))
+            # qc on rnaseq output bam
+            if qc == "True" or rnaseq == "True":  # qc ALWAYS if rnaseq
+                methods["pipelines"].append(
+                    _run_qc("/mnt/data/outputs/{}.sorted.bam".format(sample_id)))
+                get("outputs/qc", results)
+
+            # fusion
+            if fusion == "True":
+                methods["pipelines"].append(_run_fusion(r1, r2))
+                get("outputs/fusion", results)
+
+        # Write out methods
+        methods["end"] = datetime.datetime.utcnow().isoformat()
+        with open("{}/methods.json".format(results), "w") as f:
+            f.write(json.dumps(methods, indent=4))
 
 
 def verify():
     # Verify md5 of rnaseq output from TEST samples
-    put("TEST_RNA.md5", "/mnt/outputs")
-    run("tar -xOzvf /mnt/outputs/TEST.tar.gz "
-        "TEST/RSEM/rsem.genes.norm_counts.tab | "
-        "md5sum -c /mnt/outputs/TEST.md5")
-
-# @parallel
-# def qc(manifest):
-#     """ QC on all the bams in the manifest """
-#     samples = list(csv.DictReader(open(manifest), delimiter="\t"))
-
-#     # Split manifest up among all hosts for poor mans round robin task allocation
-#     for i in range(env.hosts.index(env.host), len(samples), len(env.hosts)):
-#         print "Running qc on {} sample: {}".format(i, samples[i]["Submitter Sample ID"])
-#         dest = "/mnt/inputs/{}".format(os.path.basename(fastq))
-#         if exists(os.path.splitext(dest)[0]):
-#             print "Skipping, {} already exists".format(dest)
-#         else:
-#             print "Copying {} to {}".format(fastq, dest)
-#             local("docker-machine scp {} {}:{}".format(fastq, env.hostnames[0], dest))
-#             run("gunzip {}".format(dest))
-#         with warn_only():
-#             run("docker stop defuse && docker rm defuse")
-#         run("""
-#             docker run -it --rm --name defuse \
-#                 -v /mnt/inputs:/data \
-#                 -v /mnt/outputs:/outputs \
-#                 jpfeil/defuse-pipeline:gmap-latest \
-#                 -1 {} -2 {} \
-#                 -o /outputs \
-#                 -p `nproc` \
-#                 -n {}
-#             """.format(os.path.basename(os.path.splitext(fastqs[0])[0]),
-#                        os.path.basename(os.path.splitext(fastqs[1])[0]),
-#                        samples[i]["Submitter Sample ID"]))
-#         # For now just do one sample
-#         return
+    with cd("/mnt/data/outputs"):
+        put("TEST.md5", "/mnt/data/outputs")
+        run("md5sum -c TEST.md5")
