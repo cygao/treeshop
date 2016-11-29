@@ -1,27 +1,8 @@
 """
-                # get("outputs/star-fusion.fusion_candidates.final.whitelist.abridged",
-                #     "{}/{}.genelistonly.fusion".format(
-                #         outputs, sample_id))
-                # get("outputs/star-fusion.fusion_candidates.final.final.abridged",
-                #     "{}/{}.fusion".format(
-                #         outputs, sample_id))
-SAMPLEName/rnaseq/
-/fusion/ (two files
-/qc/bam
-
-
 Treeshop: The Treehouse Workshop
 
-Experimental Python Fabric file to spin up machines,
-copy files to them, run a dockerized pipeline, and
-copy the results back.
-
-For Openstack you just set OS_USERNAME and OS_PASSWORD
-environment variables to your Openstack username and
-password.
-
-For Azure you must run docker-machine first on the command
-line to log in via URL
+Experimental fabric based automation to process
+a manifest and run pipelines via docker-machine.
 """
 import os
 import re
@@ -54,33 +35,6 @@ def machines():
     print "SSH Keys:", env.key_filename
 
 
-# def create(count=1, flavor="m1.small"):
-#     """ Create 'count' (default=1) 'flavor' (default=m1.small) machines """
-#     for i in range(0, int(count)):
-#         name = "{}-treeshop-{}".format(os.environ["USER"],
-#                                        datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-#         local("""
-#             docker-machine create --driver openstack \
-#                 --openstack-tenant-name treehouse \
-#                 --openstack-auth-url http://os-con-01.pod:5000/v2.0 \
-#                 --openstack-ssh-user ubuntu \
-#                 --openstack-flavor-name {} \
-#                 --openstack-net-name treehouse-net \
-#                 --openstack-floatingip-pool ext-net \
-#                 --openstack-image-name Ubuntu-16.04-LTS-x86_64 \
-#                 {}
-#               """.format(flavor, name))
-#         # Add ubuntu to docker group so we can do run("docker...") vs. sudo
-#         local("docker-machine ssh {} sudo gpasswd -a ubuntu docker".format(name))
-
-
-def terminate():
-    """ Terminate all machines """
-    for host in env.hostnames:
-        local("docker-machine stop -f {}".format(host))
-        local("docker-machine rm -f {}".format(host))
-
-
 @parallel
 def hello():
     """ Run echo $HOSTNAME in parallel in a container on each machine. """
@@ -91,22 +45,23 @@ def hello():
 def configure(verify="True"):
     """ Configure each machine with reference files. """
     # Put everything in data as on openstack you can't chown /mnt
-    sudo("mkdir -p /mnt/data")
-    sudo("chown ubuntu:ubuntu /mnt/data")
+    run("sudo mkdir -p /mnt/data")
+    run("sudo chown ubuntu:ubuntu /mnt/data")
     run("mkdir -p /mnt/data/references")
     run("mkdir -p /mnt/data/samples")
     run("mkdir -p /mnt/data/outputs")
     with cd("/mnt/data/references"):
         if not exists("STARFusion-GRCh38gencode23"):
-            put("/pod/pstore/users/jpfeil/references/STARFusion-GRCh38gencode23.tar.gz")
+            put("/pod/pstore/users/jpfeil/references/STARFusion-GRCh38gencode23.tar.gz",
+                "/mnt/data/references")
             run("tar -xvf STARFusion-GRCh38gencode23.tar.gz")
         for r in ["kallisto_hg38.idx",
                   "starIndex_hg38_no_alt.tar.gz", "rsem_ref_hg38_no_alt.tar.gz"]:
             run("wget -nv -N http://hgdownload.soe.ucsc.edu/treehouse/reference/{}".format(r))
         if verify == "True":
-            put("refs.rnaseq.md5")
+            put("refs.rnaseq.md5", "/mnt/data/references")
             run("md5sum -c refs.rnaseq.md5")
-            put("refs.fusion.md5")
+            put("refs.fusion.md5", "/mnt/data/references")
             run("md5sum -c refs.fusion.md5")
 
 
@@ -173,7 +128,7 @@ def process(manifest, outputs="/pod/pstore/groups/treehouse/treeshop/outputs",
 
     # Each machine will process every #hosts samples
     for sample in itertools.islice(csv.DictReader(open(manifest), delimiter="\t"),
-                                   start=env.hosts.index(env.host), step=len(env.hosts)):
+                                   env.hosts.index(env.host), None, len(env.hosts)):
         sample_id = sample["Submitter Sample ID"]
         sample_files = sample["File Path"].split(",")
         print "{} processing {}".format(env.host, sample_id)
@@ -182,11 +137,9 @@ def process(manifest, outputs="/pod/pstore/groups/treehouse/treeshop/outputs",
 
         methods = {"user": os.environ["USER"],
                    "start": datetime.datetime.utcnow().isoformat(),
+                   "inputs": sample_files,
                    "pipelines": []}
         with cd("/mnt/data"):
-            # clear results - should we do this or create a new
-            # local("rm -rf {}/{}".format(outputs, sample_id)
-
             # Copy fastqs
             if (rnaseq == "True") or (fusion == "True"):
                 if len(sample_files) != 2:
@@ -223,6 +176,12 @@ def process(manifest, outputs="/pod/pstore/groups/treehouse/treeshop/outputs",
             if fusion == "True":
                 methods["pipelines"].append(_run_fusion(r1, r2))
                 get("outputs/fusion", results)
+                # get("outputs/star-fusion.fusion_candidates.final.whitelist.abridged",
+                #     "{}/{}.genelistonly.fusion".format(
+                #         outputs, sample_id))
+                # get("outputs/star-fusion.fusion_candidates.final.final.abridged",
+                #     "{}/{}.fusion".format(
+                #         outputs, sample_id))
 
         # Write out methods
         methods["end"] = datetime.datetime.utcnow().isoformat()

@@ -20,7 +20,7 @@ create-azure:
 	# Start an azure docker-machine, specify size by make create-azure AZURE_FLAVOR=Standard_D1
 	# Sizes: https://docs.microsoft.com/en-us/azure/virtual-machines/virtual-machines-linux-sizes
 	docker-machine create --driver azure \
-		--azure-subscription-id 11ef7f2c-6e06-44dc-a389-1d6b1bea9489 \
+		--azure-subscription-id $(AZURE_SUBID) \
 		--azure-resource-group treeshop \
 		--azure-ssh-user ubuntu \
 		--azure-image canonical:UbuntuServer:16.04.0-LTS:latest \
