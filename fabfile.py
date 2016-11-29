@@ -123,12 +123,12 @@ def _reset_machine():
 
 @parallel
 def process(manifest, outputs="/pod/pstore/groups/treehouse/treeshop/outputs",
-            rnaseq="True", qc="True", fusion="True"):
+            rnaseq="True", qc="True", fusion="True", limit=None):
     """ Process on all the samples in 'manifest' """
 
     # Each machine will process every #hosts samples
     for sample in itertools.islice(csv.DictReader(open(manifest), delimiter="\t"),
-                                   env.hosts.index(env.host), None, len(env.hosts)):
+                                   env.hosts.index(env.host), limit, len(env.hosts)):
         sample_id = sample["Submitter Sample ID"]
         sample_files = sample["File Path"].split(",")
         print "{} processing {}".format(env.host, sample_id)
