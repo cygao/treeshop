@@ -137,8 +137,10 @@ def process(manifest, outputs="/pod/pstore/groups/treehouse/treeshop/outputs",
 
         methods = {"user": os.environ["USER"],
                    "start": datetime.datetime.utcnow().isoformat(),
+                   "treeshop_version": local("git describe --always", capture=True),
                    "inputs": sample_files,
                    "pipelines": []}
+
         with cd("/mnt/data"):
             # Copy fastqs
             if (rnaseq == "True") or (fusion == "True"):
