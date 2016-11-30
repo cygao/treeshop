@@ -51,13 +51,14 @@ def configure(verify="True"):
     run("mkdir -p /mnt/data/samples")
     run("mkdir -p /mnt/data/outputs")
     with cd("/mnt/data/references"):
+        for ref in ["kallisto_hg38.idx",
+                    "starIndex_hg38_no_alt.tar.gz",
+                    "rsem_ref_hg38_no_alt.tar.gz",
+                    "STARFusion-GRCh38gencode23.tar.gz"]:
+            if not exists(ref):
+                run("wget -nv -N https://treeshop.blob.core.windows.net/references/{}".format(ref))
         if not exists("STARFusion-GRCh38gencode23"):
-            put("/pod/pstore/users/jpfeil/references/STARFusion-GRCh38gencode23.tar.gz",
-                "/mnt/data/references")
             run("tar -xvf STARFusion-GRCh38gencode23.tar.gz")
-        for r in ["kallisto_hg38.idx",
-                  "starIndex_hg38_no_alt.tar.gz", "rsem_ref_hg38_no_alt.tar.gz"]:
-            run("wget -nv -N http://hgdownload.soe.ucsc.edu/treehouse/reference/{}".format(r))
         if verify == "True":
             put("refs.rnaseq.md5", "/mnt/data/references")
             run("md5sum -c refs.rnaseq.md5")
