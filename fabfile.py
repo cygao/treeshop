@@ -96,6 +96,10 @@ def _run_qc(bam):
             -v {}:/data/rnaAligned.sortedByCoord.out.bam \
             hbeale/treehouse_bam_qc:1.0 runQC.sh
         """.format(bam))
+    # prune
+    run("rm outputs/qc/rnaAligned.sortedByName.bam")
+    run("rm outputs/qc/rnaAligned.sortedByName.md.bam")
+    run("rm outputs/qc/rnaAligned.sortedByCoord.out.bam")
     return "hbeale/treehouse_bam_qc:1.0"
 
 
