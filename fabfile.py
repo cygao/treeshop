@@ -109,6 +109,8 @@ def _run_fusion(r1, r2):
             --genome_lib_dir references/STARFusion-GRCh38gencode23 \
             --left_fq samples/{} --right_fq samples/{} --output_dir outputs/fusion
         """.format(r1, r2))
+    # prune
+    run("rm outputs/fusion/*.bam")
     return "jpfeil/star-fusion:0.0.1"
 
 
