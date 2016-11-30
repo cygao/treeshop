@@ -1,3 +1,2 @@
 Submitter Sample ID	File Path
-TEST0	samples/TEST_R1.fastq.gz,samples/TEST_R2.fastq.gz
-TEST1	samples/TEST_R1.fastq.gz,samples/TEST_R2.fastq.gz
+TEST	samples/TEST_R1.fastq.gz,samples/TEST_R2.fastq.gz
