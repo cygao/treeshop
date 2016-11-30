@@ -156,8 +156,8 @@ def process(manifest, outputs="/pod/pstore/groups/treehouse/treeshop/outputs",
                 r1, r2 = [os.path.basename(f) for f in sample_files]
 
             # If only running qc then copy bam as if it came from rnaseq
-            if (qc == "True") and (rnaseq != "True"):  # qc only so copy bam
-                if not sample_files[0].endwith(".bam"):
+            if (qc == "True") and (rnaseq != "True") and (fusion != "True"):
+                if not sample_files[0].endswith(".bam"):
                     abort("Expected bam for {}".format(sample_id))
                 put(sample_files[0],
                     "outputs/{}.sorted.bam".format(sample_id))
@@ -181,12 +181,6 @@ def process(manifest, outputs="/pod/pstore/groups/treehouse/treeshop/outputs",
             if fusion == "True":
                 methods["pipelines"].append(_run_fusion(r1, r2))
                 get("outputs/fusion", results)
-                # get("outputs/star-fusion.fusion_candidates.final.whitelist.abridged",
-                #     "{}/{}.genelistonly.fusion".format(
-                #         outputs, sample_id))
-                # get("outputs/star-fusion.fusion_candidates.final.final.abridged",
-                #     "{}/{}.fusion".format(
-                #         outputs, sample_id))
 
         # Write out methods
         methods["end"] = datetime.datetime.utcnow().isoformat()
