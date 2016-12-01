@@ -97,9 +97,9 @@ def _run_qc(bam):
             hbeale/treehouse_bam_qc:1.0 runQC.sh
         """.format(bam))
     # prune
-    run("rm outputs/qc/rnaAligned.sortedByName.bam")
-    run("rm outputs/qc/rnaAligned.sortedByName.md.bam")
-    run("rm outputs/qc/rnaAligned.sortedByCoord.out.bam")
+    run("rm -f outputs/qc/rnaAligned.sortedByName.bam")
+    run("rm -f outputs/qc/rnaAligned.sortedByName.md.bam")
+    run("rm -f outputs/qc/rnaAligned.sortedByCoord.out.bam")
     return "hbeale/treehouse_bam_qc:1.0"
 
 
@@ -114,7 +114,7 @@ def _run_fusion(r1, r2):
             --left_fq samples/{} --right_fq samples/{} --output_dir outputs/fusion
         """.format(r1, r2))
     # prune
-    run("rm outputs/fusion/*.bam")
+    run("rm -f outputs/fusion/*.bam")
     return "jpfeil/star-fusion:0.0.1"
 
 
