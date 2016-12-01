@@ -22,6 +22,7 @@ on openstack the driver deletes it on termination.
 """
 env.user = "ubuntu"
 env.hostnames = local("docker-machine ls --format '{{.Name}}'", capture=True).split("\n")
+env.drivernames = local("docker-machine ls --format '{{.DriverName}}'", capture=True).split("\n")
 env.hosts = re.findall(r'[0-9]+(?:\.[0-9]+){3}',
                        local("docker-machine ls --format '{{.URL}}'", capture=True))
 env.key_filename = ["~/.docker/machine/machines/{}/id_rsa".format(m) for m in env.hostnames]
@@ -30,7 +31,8 @@ env.key_filename = ["~/.docker/machine/machines/{}/id_rsa".format(m) for m in en
 @runs_once
 def machines():
     """ Print hostname, ip, and ssh key location of each machine """
-    print "Hostnames:", env.hostnames
+    print "Hostnames", env.hostnames
+    print "Drivers:", env.drivernames
     print "IPs:", env.hosts
     print "SSH Keys:", env.key_filename
 
@@ -38,7 +40,7 @@ def machines():
 @parallel
 def hello():
     """ Run echo $HOSTNAME in parallel in a container on each machine. """
-    print "Running against", env.host
+    print "Running hello on {} in {}".format(env.host, env.drivernames[env.hosts.index(env.host)])
     run("docker run alpine /bin/echo ""Hello from $HOSTNAME""")
 
 
@@ -50,13 +52,20 @@ def configure(verify="True"):
     run("mkdir -p /mnt/data/references")
     run("mkdir -p /mnt/data/samples")
     run("mkdir -p /mnt/data/outputs")
+
+    # Grab references from the local blob store to each environment
+    if env.drivernames[env.hosts.index(env.host)] is "azure":
+        base_ref_url = "https://treeshop.blob.core.windows.net/references"
+    else:
+        base_ref_url = "http://ceph-gw-01.pod/references"
+
     with cd("/mnt/data/references"):
         for ref in ["kallisto_hg38.idx",
                     "starIndex_hg38_no_alt.tar.gz",
                     "rsem_ref_hg38_no_alt.tar.gz",
                     "STARFusion-GRCh38gencode23.tar.gz"]:
             if not exists(ref):
-                run("wget -nv -N https://treeshop.blob.core.windows.net/references/{}".format(ref))
+                run("wget -nv -N {}/{}".format(base_ref_url, ref))
         if not exists("STARFusion-GRCh38gencode23"):
             run("tar -xvf STARFusion-GRCh38gencode23.tar.gz")
         if verify == "True":
