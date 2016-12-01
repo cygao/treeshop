@@ -129,7 +129,7 @@ def _reset_machine():
 
 
 @parallel
-def process(manifest, outputs="/pod/pstore/groups/treehouse/treeshop/outputs",
+def process(manifest, outputs=".",
             rnaseq="True", qc="True", fusion="True", limit=None):
     """ Process on all the samples in 'manifest' """
 
