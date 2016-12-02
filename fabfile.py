@@ -13,7 +13,6 @@ import itertools
 from fabric.api import env, local, run, sudo, runs_once, parallel, warn_only, cd
 from fabric.contrib.files import exists
 from fabric.operations import put, get
-from fabric.utils import abort
 
 """
 Setup the fabric hosts environment using docker-machine ip addresses as hostnames are not
@@ -21,10 +20,13 @@ resolvable. Also point to all the per machine ssh keys. An alternative would be 
 on openstack the driver deletes it on termination.
 """
 env.user = "ubuntu"
-env.hostnames = local("docker-machine ls --format '{{.Name}}'", capture=True).split("\n")
-env.drivernames = local("docker-machine ls --format '{{.DriverName}}'", capture=True).split("\n")
+env.hostnames = local("docker-machine ls --filter state=Running --format '{{.Name}}'",
+                      capture=True).split("\n")
+env.drivernames = local("docker-machine ls --filter state=Running --format '{{.DriverName}}'",
+                        capture=True).split("\n")
 env.hosts = re.findall(r'[0-9]+(?:\.[0-9]+){3}',
-                       local("docker-machine ls --format '{{.URL}}'", capture=True))
+                       local("docker-machine ls --filter state=Running --format '{{.URL}}'",
+                             capture=True))
 env.key_filename = ["~/.docker/machine/machines/{}/id_rsa".format(m) for m in env.hostnames]
 
 
@@ -142,12 +144,31 @@ def process(manifest, outputs=".",
             rnaseq="True", qc="True", fusion="True", limit=None):
     """ Process on all the samples in 'manifest' """
 
+    def log_error(message):
+        with open("{}/errors.txt".format(outputs), "a") as error_log:
+            error_log.write(message)
+
     # Each machine will process every #hosts samples
     for sample in itertools.islice(csv.DictReader(open(manifest), delimiter="\t"),
-                                   env.hosts.index(env.host), limit, len(env.hosts)):
+                                   env.hosts.index(env.host),
+                                   int(limit) if limit else None, len(env.hosts)):
         sample_id = sample["Submitter Sample ID"]
         sample_files = sample["File Path"].split(",")
         print "{} processing {}".format(env.host, sample_id)
+
+        if os.path.exists("{}/{}".format(outputs, sample_id)):
+            log_error("{}/{} already exists".format(outputs, sample_id))
+            continue
+
+        # Create folder on storage for results named after sample id
+        results = "{}/{}".format(outputs, sample_id)
+        local("mkdir -p {}".format(results))
+
+        # See if all the files exist
+        for sample in sample_files:
+            if not os.path.isfile(sample):
+                log_error("{} does not exist".format(sample))
+                continue
 
         _reset_machine()
 
@@ -161,7 +182,8 @@ def process(manifest, outputs=".",
             # Copy fastqs
             if (rnaseq == "True") or (fusion == "True"):
                 if len(sample_files) != 2:
-                    abort("Expected 2 samples files")
+                    log_error("Expected 2 samples files {} {}".format(sample_id, sample_files))
+                    continue
 
                 for fastq in sample_files:
                     if not exists("samples/{}".format(os.path.basename(fastq))):
@@ -171,13 +193,10 @@ def process(manifest, outputs=".",
             # If only running qc then copy bam as if it came from rnaseq
             if (qc == "True") and (rnaseq != "True") and (fusion != "True"):
                 if not sample_files[0].endswith(".bam"):
-                    abort("Expected bam for {}".format(sample_id))
+                    log_error("Expected bam for {} {}".format(sample_id, sample_files))
+                    continue
                 put(sample_files[0],
                     "outputs/{}.sorted.bam".format(sample_id))
-
-            # Create folder on storage for results named after sample id
-            results = "{}/{}".format(outputs, sample_id)
-            local("mkdir -p {}".format(results))
 
             # rnaseq
             if rnaseq == "True":
