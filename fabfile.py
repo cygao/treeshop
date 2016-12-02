@@ -39,6 +39,11 @@ def machines():
     print "SSH Keys:", env.key_filename
 
 
+def top():
+    """ Get top 5 processes on each machine """
+    run("top -b -n 1 | head -n 12  | tail -n 5")
+
+
 @parallel
 def hello():
     """ Run echo $HOSTNAME in parallel in a container on each machine. """
@@ -146,7 +151,7 @@ def process(manifest, outputs=".",
 
     def log_error(message):
         with open("{}/errors.txt".format(outputs), "a") as error_log:
-            error_log.write(message)
+            error_log.write(message + "\n")
 
     # Each machine will process every #hosts samples
     for sample in itertools.islice(csv.DictReader(open(manifest), delimiter="\t"),
