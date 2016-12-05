@@ -175,6 +175,13 @@ def process(manifest, outputs=".",
                 log_error("{} does not exist".format(sample))
                 continue
 
+            # Hack to make sure sample name and file name match because RNASeq
+            # puts the file name as the gene_id in the RSEM file and MedBook
+            # uses that to name the sample.
+            if os.path.basename(sample) != sample_id:
+                log_error("Filename does not match sample id: {} {}".format(sample_id, sample))
+                continue
+
         reset_machine()
 
         methods = {"user": os.environ["USER"],
