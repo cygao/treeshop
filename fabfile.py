@@ -134,8 +134,8 @@ def _run_fusion(r1, r2):
     return "jpfeil/star-fusion:0.0.1"
 
 
-def _reset_machine():
-    # Stop an existing processing and delete inputs and outputs
+def reset_machine():
+    # Stop any existing processing and delete inputs and outputs
     with warn_only():
         run("docker stop rnaseq && docker rm rnaseq")
         run("docker stop fusion && docker rm fusion")
@@ -175,7 +175,7 @@ def process(manifest, outputs=".",
                 log_error("{} does not exist".format(sample))
                 continue
 
-        _reset_machine()
+        reset_machine()
 
         methods = {"user": os.environ["USER"],
                    "start": datetime.datetime.utcnow().isoformat(),
@@ -200,6 +200,7 @@ def process(manifest, outputs=".",
                 if not sample_files[0].endswith(".bam"):
                     log_error("Expected bam for {} {}".format(sample_id, sample_files))
                     continue
+                print "Copying bam for {}".format(sample_id)
                 put(sample_files[0],
                     "outputs/{}.sorted.bam".format(sample_id))
 
@@ -210,6 +211,7 @@ def process(manifest, outputs=".",
 
             # qc on rnaseq output bam
             if qc == "True" or rnaseq == "True":  # qc ALWAYS if rnaseq
+                print "Starting qc for {}".format(sample_id)
                 methods["pipelines"].append(
                     _run_qc("/mnt/data/outputs/{}.sorted.bam".format(sample_id)))
                 get("outputs/qc", results)
