@@ -82,7 +82,7 @@ def configure(verify="True"):
             run("md5sum -c refs.fusion.md5")
 
 
-def _run_rnaseq(r1, r2, name):
+def _run_rnaseq(r1, r2, name, prune):
     # RNASeq expects the fastqs tarred up...
     run("tar -cf samples/{}.tar samples/{} samples/{}".format(name, r1, r2))
     run("""
@@ -104,7 +104,7 @@ def _run_rnaseq(r1, r2, name):
     return "quay.io/ucsc_cgl/rnaseq-cgl-pipeline:2.0.8"
 
 
-def _run_qc(bam):
+def _run_qc(bam, prune):
     run("mkdir outputs/qc")
     run("""
         docker run --rm --name qc \
@@ -113,13 +113,14 @@ def _run_qc(bam):
             hbeale/treehouse_bam_qc:1.0 runQC.sh
         """.format(bam))
     # prune
-    run("rm -f outputs/qc/rnaAligned.sortedByName.bam")
-    run("rm -f outputs/qc/rnaAligned.sortedByName.md.bam")
-    run("rm -f outputs/qc/rnaAligned.sortedByCoord.out.bam")
+    if prune:
+        run("rm -f outputs/qc/rnaAligned.sortedByName.bam")
+        run("rm -f outputs/qc/rnaAligned.sortedByName.md.bam")
+        run("rm -f outputs/qc/rnaAligned.sortedByCoord.out.bam")
     return "hbeale/treehouse_bam_qc:1.0"
 
 
-def _run_fusion(r1, r2):
+def _run_fusion(r1, r2, prune):
     run("mkdir outputs/fusion")
     run("""
         docker run --rm --name fusion \
@@ -130,7 +131,8 @@ def _run_fusion(r1, r2):
             --left_fq samples/{} --right_fq samples/{} --output_dir outputs/fusion
         """.format(r1, r2))
     # prune
-    run("rm -f outputs/fusion/*.bam")
+    if prune:
+        run("rm -f outputs/fusion/*.bam")
     return "jpfeil/star-fusion:0.0.1"
 
 
@@ -146,7 +148,8 @@ def reset_machine():
 
 @parallel
 def process(manifest, outputs=".",
-            rnaseq="True", qc="True", fusion="True", limit=None):
+            rnaseq="True", qc="True", fusion="True",
+            prune="True", limit=None):
     """ Process on all the samples in 'manifest' """
 
     def log_error(message):
@@ -178,7 +181,7 @@ def process(manifest, outputs=".",
             # Hack to make sure sample name and file name match because RNASeq
             # puts the file name as the gene_id in the RSEM file and MedBook
             # uses that to name the sample.
-            if os.path.basename(sample) != sample_id:
+            if rnaseq == "True" and not os.path.basename(sample).startswith(sample_id):
                 log_error("Filename does not match sample id: {} {}".format(sample_id, sample))
                 continue
 
@@ -213,19 +216,19 @@ def process(manifest, outputs=".",
 
             # rnaseq
             if rnaseq == "True":
-                methods["pipelines"].append(_run_rnaseq(r1, r2, sample_id))
+                methods["pipelines"].append(_run_rnaseq(r1, r2, sample_id, prune == "True"))
                 get("outputs/rnaseq", results)
 
             # qc on rnaseq output bam
             if qc == "True" or rnaseq == "True":  # qc ALWAYS if rnaseq
                 print "Starting qc for {}".format(sample_id)
                 methods["pipelines"].append(
-                    _run_qc("/mnt/data/outputs/{}.sorted.bam".format(sample_id)))
+                    _run_qc("/mnt/data/outputs/{}.sorted.bam".format(sample_id)), prune == "True")
                 get("outputs/qc", results)
 
             # fusion
             if fusion == "True":
-                methods["pipelines"].append(_run_fusion(r1, r2))
+                methods["pipelines"].append(_run_fusion(r1, r2), prune == "True")
                 get("outputs/fusion", results)
 
         # Write out methods
