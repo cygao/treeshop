@@ -3,6 +3,10 @@ Treeshop: The Treehouse Workshop
 
 Experimental fabric based automation to process
 a manifest and run pipelines via docker-machine.
+
+NOTE: This is a bit of a rambling hack and very much
+hard coded and idiosyncratic to the current set of
+Treehouse pipelines and files they use.
 """
 import os
 import re
@@ -230,6 +234,8 @@ def process(manifest, outputs=".",
             if rnaseq == "True":
                 methods["pipelines"].append(_run_rnaseq(r1, r2, sample_id, prune == "True"))
                 get("outputs/rnaseq", results)
+                if prune != "True":
+                    get("/mnt/data/outputs/{}.sorted.bam".format(sample_id), results)
 
             # qc on rnaseq output bam
             if qc == "True" or rnaseq == "True":  # qc ALWAYS if rnaseq
