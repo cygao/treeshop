@@ -142,8 +142,8 @@ def reset_machine():
         run("docker stop rnaseq && docker rm rnaseq")
         run("docker stop fusion && docker rm fusion")
         run("docker stop qc && docker rm qc")
-    sudo("rm -rf /mnt/data/samples/*")
-    sudo("rm -rf /mnt/data/outputs/*")
+        sudo("rm -rf /mnt/data/samples/*")
+        sudo("rm -rf /mnt/data/outputs/*")
 
 
 @parallel
@@ -156,6 +156,8 @@ def process(manifest, outputs=".",
         with open("{}/errors.txt".format(outputs), "a") as error_log:
             error_log.write(message + "\n")
 
+    print "Processing starting on {}".format(env.host)
+
     # Each machine will process every #hosts samples
     for sample in itertools.islice(csv.DictReader(open(manifest), delimiter="\t"),
                                    env.hosts.index(env.host),
@@ -167,10 +169,6 @@ def process(manifest, outputs=".",
         if os.path.exists("{}/{}".format(outputs, sample_id)):
             log_error("{}/{} already exists".format(outputs, sample_id))
             continue
-
-        # Create folder on storage for results named after sample id
-        results = "{}/{}".format(outputs, sample_id)
-        local("mkdir -p {}".format(results))
 
         # See if all the files exist
         for sample in sample_files:
@@ -185,11 +183,14 @@ def process(manifest, outputs=".",
                 log_error("Filename does not match sample id: {} {}".format(sample_id, sample))
                 continue
 
+        print "Resetting {}".format(env.host)
         reset_machine()
 
         methods = {"user": os.environ["USER"],
                    "start": datetime.datetime.utcnow().isoformat(),
-                   "treeshop_version": local("git describe --always", capture=True),
+                   "treeshop_version": local(
+                       "git --work-tree={0} --git-dir {0}/.git describe --always".format(
+                           os.path.dirname(__file__)), capture=True),
                    "inputs": sample_files,
                    "pipelines": []}
 
@@ -201,7 +202,11 @@ def process(manifest, outputs=".",
                     continue
 
                 for fastq in sample_files:
+                    if not os.path.isfile(fastq):
+                        log_error("Unable to find file: {} {}".format(sample_id, fastq))
+                        continue
                     if not exists("samples/{}".format(os.path.basename(fastq))):
+                        print "Copying files...."
                         put(fastq, "samples/{}".format(os.path.basename(fastq)))
                 r1, r2 = [os.path.basename(f) for f in sample_files]
 
@@ -214,6 +219,12 @@ def process(manifest, outputs=".",
                 put(sample_files[0],
                     "outputs/{}.sorted.bam".format(sample_id))
 
+            # Create folder on storage for results named after sample id
+            # Wait until now in case something above fails so we don't have
+            # an empty directory
+            results = "{}/{}".format(outputs, sample_id)
+            local("mkdir -p {}".format(results))
+
             # rnaseq
             if rnaseq == "True":
                 methods["pipelines"].append(_run_rnaseq(r1, r2, sample_id, prune == "True"))
@@ -223,7 +234,7 @@ def process(manifest, outputs=".",
             if qc == "True" or rnaseq == "True":  # qc ALWAYS if rnaseq
                 print "Starting qc for {}".format(sample_id)
                 methods["pipelines"].append(
-                    _run_qc("/mnt/data/outputs/{}.sorted.bam".format(sample_id)), prune == "True")
+                    _run_qc("/mnt/data/outputs/{}.sorted.bam".format(sample_id), prune == "True"))
                 get("outputs/qc", results)
 
             # fusion
