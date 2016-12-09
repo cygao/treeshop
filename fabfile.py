@@ -153,6 +153,7 @@ def process(manifest, outputs=".",
     """ Process on all the samples in 'manifest' """
 
     def log_error(message):
+        print message
         with open("{}/errors.txt".format(outputs), "a") as error_log:
             error_log.write(message + "\n")
 
