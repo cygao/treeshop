@@ -164,7 +164,7 @@ def process(manifest, outputs=".",
     print "Processing starting on {}".format(env.host)
 
     # Each machine will process every #hosts samples
-    for sample in itertools.islice(csv.DictReader(open(manifest), delimiter="\t"),
+    for sample in itertools.islice(csv.DictReader(open(manifest, "rU"), delimiter="\t"),
                                    env.hosts.index(env.host),
                                    int(limit) if limit else None, len(env.hosts)):
         sample_id = sample["Submitter Sample ID"]
