@@ -55,6 +55,7 @@ def hello():
     run("docker run alpine /bin/echo ""Hello from $HOSTNAME""")
 
 
+@parallel
 def configure(verify="True"):
     """ Configure each machine with reference files. """
     # Put everything in data as on openstack you can't chown /mnt
@@ -200,7 +201,7 @@ def process(manifest, outputs=".",
                    "pipelines": []}
 
         with cd("/mnt/data"):
-            # Copy fastqs
+            # Copy fastqs, fixing r1/r2 for R1/R2 if needed
             if (rnaseq == "True") or (fusion == "True"):
                 if len(sample_files) != 2:
                     log_error("Expected 2 samples files {} {}".format(sample_id, sample_files))
@@ -212,8 +213,11 @@ def process(manifest, outputs=".",
                         continue
                     if not exists("samples/{}".format(os.path.basename(fastq))):
                         print "Copying files...."
-                        put(fastq, "samples/{}".format(os.path.basename(fastq)))
-                r1, r2 = [os.path.basename(f) for f in sample_files]
+                        put(fastq, "samples/{}".format(
+                            os.path.basename(fastq).replace("r1.", "R1.").replace("r2.", "R2.")))
+
+                r1, r2 = [os.path.basename(f).replace("r1.", "R1.").replace("r2.", "R2.")
+                          for f in sample_files]
 
             # If only running qc then copy bam as if it came from rnaseq
             if (qc == "True") and (rnaseq != "True") and (fusion != "True"):
@@ -246,7 +250,7 @@ def process(manifest, outputs=".",
 
             # fusion
             if fusion == "True":
-                methods["pipelines"].append(_run_fusion(r1, r2), prune == "True")
+                methods["pipelines"].append(_run_fusion(r1, r2, prune == "True"))
                 get("outputs/fusion", results)
 
         # Write out methods
