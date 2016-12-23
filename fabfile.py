@@ -44,8 +44,9 @@ def machines():
 
 
 def top():
-    """ Get top 5 processes on each machine """
-    run("top -b -n 1 | head -n 12  | tail -n 5")
+    """ Get list of docker containers and top 3 processes """
+    run("docker ps")
+    run("top -b -n 1 | head -n 12  | tail -n 3")
 
 
 @parallel
