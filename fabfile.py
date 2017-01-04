@@ -131,7 +131,7 @@ def _run_fusion(r1, r2, prune):
     run("""
         docker run --rm --name fusion \
             -v /mnt/data:/data \
-            jpfeil/star-fusion:0.0.1 \
+            jpfeil/star-fusion:0.0.2 \
             --CPU `nproc` \
             --genome_lib_dir references/STARFusion-GRCh38gencode23 \
             --left_fq samples/{} --right_fq samples/{} --output_dir outputs/fusion
@@ -139,7 +139,7 @@ def _run_fusion(r1, r2, prune):
     # prune
     if prune:
         run("rm -f outputs/fusion/*.bam")
-    return "jpfeil/star-fusion:0.0.1"
+    return "jpfeil/star-fusion:0.0.2"
 
 
 def reset_machine():
