@@ -170,7 +170,7 @@ def process(manifest, outputs=".",
                                    env.hosts.index(env.host),
                                    int(limit) if limit else None, len(env.hosts)):
         sample_id = sample["Submitter Sample ID"]
-        sample_files = sample["File Path"].split(",")
+        sample_files = map(str.strip, sample["File Path"].split(","))
         print "{} processing {}".format(env.host, sample_id)
 
         if os.path.exists("{}/{}".format(outputs, sample_id)):
@@ -180,15 +180,15 @@ def process(manifest, outputs=".",
         # See if all the files exist
         for sample in sample_files:
             if not os.path.isfile(sample):
-                log_error("{} does not exist".format(sample))
+                log_error("{} for {} does not exist".format(sample, sample_id))
                 continue
 
             # Hack to make sure sample name and file name match because RNASeq
             # puts the file name as the gene_id in the RSEM file and MedBook
             # uses that to name the sample.
-            if rnaseq == "True" and not os.path.basename(sample).startswith(sample_id):
-                log_error("Filename does not match sample id: {} {}".format(sample_id, sample))
-                continue
+            # if rnaseq == "True" and not os.path.basename(sample).startswith(sample_id):
+            #     log_error("Filename does not match sample id: {} {}".format(sample_id, sample))
+            #     continue
 
         print "Resetting {}".format(env.host)
         reset_machine()
@@ -258,6 +258,20 @@ def process(manifest, outputs=".",
         methods["end"] = datetime.datetime.utcnow().isoformat()
         with open("{}/methods.json".format(results), "w") as f:
             f.write(json.dumps(methods, indent=4))
+
+
+@runs_once
+def check(manifest):
+    """ Check that each file in manifest exists """
+    for sample in csv.DictReader(open(manifest, "rU"), delimiter="\t"):
+        sample_id = sample["Submitter Sample ID"]
+        sample_files = map(str.strip, sample["File Path"].split(","))
+
+        # See if all the files exist
+        for sample in sample_files:
+            if not os.path.isfile(sample):
+                print("{} for {} does not exist".format(sample, sample_id))
+                continue
 
 
 def verify():
