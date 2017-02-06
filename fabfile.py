@@ -132,9 +132,10 @@ def _run_fusion(r1, r2, prune):
         docker run --rm --name fusion \
             -v /mnt/data:/data \
             jpfeil/star-fusion:0.0.2 \
+            --left_fq samples/{} --right_fq samples/{} --output_dir outputs/fusion \
             --CPU `nproc` \
             --genome_lib_dir references/STARFusion-GRCh38gencode23 \
-            --left_fq samples/{} --right_fq samples/{} --output_dir outputs/fusion
+            --run_fusion_inspector
         """.format(r1, r2))
     # prune
     if prune:
