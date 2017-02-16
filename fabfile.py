@@ -37,10 +37,10 @@ env.key_filename = ["~/.docker/machine/machines/{}/id_rsa".format(m) for m in en
 @runs_once
 def machines():
     """ Print hostname, ip, and ssh key location of each machine """
-    print "Hostnames", env.hostnames
-    print "Drivers:", env.drivernames
-    print "IPs:", env.hosts
-    print "SSH Keys:", env.key_filename
+    print("Hostnames", env.hostnames)
+    print("Drivers:", env.drivernames)
+    print("IPs:", env.hosts)
+    print("SSH Keys:", env.key_filename)
 
 
 def top():
@@ -52,7 +52,7 @@ def top():
 @parallel
 def hello():
     """ Run echo $HOSTNAME in parallel in a container on each machine. """
-    print "Running hello on {} in {}".format(env.host, env.drivernames[env.hosts.index(env.host)])
+    print("Running hello on {} in {}".format(env.host, env.drivernames[env.hosts.index(env.host)]))
     run("docker run alpine /bin/echo ""Hello from $HOSTNAME""")
 
 
@@ -160,11 +160,11 @@ def process(manifest, outputs=".",
     """ Process on all the samples in 'manifest' """
 
     def log_error(message):
-        print message
+        print(message)
         with open("{}/errors.txt".format(outputs), "a") as error_log:
             error_log.write(message + "\n")
 
-    print "Processing starting on {}".format(env.host)
+    print("Processing starting on {}".format(env.host))
 
     # Each machine will process every #hosts samples
     for sample in itertools.islice(csv.DictReader(open(manifest, "rU"), delimiter="\t"),
@@ -172,7 +172,7 @@ def process(manifest, outputs=".",
                                    int(limit) if limit else None, len(env.hosts)):
         sample_id = sample["Submitter Sample ID"]
         sample_files = map(str.strip, sample["File Path"].split(","))
-        print "{} processing {}".format(env.host, sample_id)
+        print("{} processing {}".format(env.host, sample_id))
 
         if os.path.exists("{}/{}".format(outputs, sample_id)):
             log_error("{}/{} already exists".format(outputs, sample_id))
@@ -191,7 +191,7 @@ def process(manifest, outputs=".",
             #     log_error("Filename does not match sample id: {} {}".format(sample_id, sample))
             #     continue
 
-        print "Resetting {}".format(env.host)
+        print("Resetting {}".format(env.host))
         reset_machine()
 
         methods = {"user": os.environ["USER"],
@@ -214,7 +214,7 @@ def process(manifest, outputs=".",
                         log_error("Unable to find file: {} {}".format(sample_id, fastq))
                         continue
                     if not exists("samples/{}".format(os.path.basename(fastq))):
-                        print "Copying files...."
+                        print("Copying files....")
                         put(fastq, "samples/{}".format(
                             os.path.basename(fastq).replace("r1.", "R1.").replace("r2.", "R2.")))
 
@@ -226,7 +226,7 @@ def process(manifest, outputs=".",
                 if not sample_files[0].endswith(".bam"):
                     log_error("Expected bam for {} {}".format(sample_id, sample_files))
                     continue
-                print "Copying bam for {}".format(sample_id)
+                print("Copying bam for {}".format(sample_id))
                 put(sample_files[0],
                     "outputs/{}.sorted.bam".format(sample_id))
 
@@ -243,9 +243,9 @@ def process(manifest, outputs=".",
                 if prune != "True":
                     get("/mnt/data/outputs/{}.sorted.bam".format(sample_id), results)
 
-            # qc on rnaseq output bam
-            if qc == "True" or rnaseq == "True":  # qc ALWAYS if rnaseq
-                print "Starting qc for {}".format(sample_id)
+            # qc
+            if qc == "True":
+                print("Starting qc for {}".format(sample_id))
                 methods["pipelines"].append(
                     _run_qc("/mnt/data/outputs/{}.sorted.bam".format(sample_id), prune == "True"))
                 get("outputs/qc", results)
