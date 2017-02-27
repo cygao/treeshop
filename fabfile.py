@@ -273,6 +273,8 @@ def check(manifest):
             if not os.path.isfile(sample):
                 print("{} for {} does not exist".format(sample, sample_id))
                 continue
+            else:
+                print("{} exists".format(sample))
 
 
 def verify():
