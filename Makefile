@@ -1,7 +1,7 @@
 ts := $(shell /bin/date "+%Y%m%d-%H%M%S")
 
-AZURE_FLAVOR=Standard_D1
-OPENSTACK_FLAVOR=m1.small
+AZURE_FLAVOR=Standard_D14
+OPENSTACK_FLAVOR=z1.medium
 
 create-openstack:
 	# Start an openstack docker-machine, specify size by make create-openstack OPENSTACK_FLAVOR=m1.small

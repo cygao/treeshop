@@ -37,24 +37,26 @@ env.key_filename = ["~/.docker/machine/machines/{}/id_rsa".format(m) for m in en
 @runs_once
 def machines():
     """ Print hostname, ip, and ssh key location of each machine """
-    print "Hostnames", env.hostnames
-    print "Drivers:", env.drivernames
-    print "IPs:", env.hosts
-    print "SSH Keys:", env.key_filename
+    print("Hostnames", env.hostnames)
+    print("Drivers:", env.drivernames)
+    print("IPs:", env.hosts)
+    print("SSH Keys:", env.key_filename)
 
 
 def top():
-    """ Get top 5 processes on each machine """
-    run("top -b -n 1 | head -n 12  | tail -n 5")
+    """ Get list of docker containers and top 3 processes """
+    run("docker ps")
+    run("top -b -n 1 | head -n 12  | tail -n 3")
 
 
 @parallel
 def hello():
     """ Run echo $HOSTNAME in parallel in a container on each machine. """
-    print "Running hello on {} in {}".format(env.host, env.drivernames[env.hosts.index(env.host)])
+    print("Running hello on {} in {}".format(env.host, env.drivernames[env.hosts.index(env.host)]))
     run("docker run alpine /bin/echo ""Hello from $HOSTNAME""")
 
 
+@parallel
 def configure(verify="True"):
     """ Configure each machine with reference files. """
     # Put everything in data as on openstack you can't chown /mnt
@@ -129,15 +131,16 @@ def _run_fusion(r1, r2, prune):
     run("""
         docker run --rm --name fusion \
             -v /mnt/data:/data \
-            jpfeil/star-fusion:0.0.1 \
+            jpfeil/star-fusion:0.0.2 \
+            --left_fq samples/{} --right_fq samples/{} --output_dir outputs/fusion \
             --CPU `nproc` \
             --genome_lib_dir references/STARFusion-GRCh38gencode23 \
-            --left_fq samples/{} --right_fq samples/{} --output_dir outputs/fusion
+            --run_fusion_inspector
         """.format(r1, r2))
     # prune
     if prune:
         run("rm -f outputs/fusion/*.bam")
-    return "jpfeil/star-fusion:0.0.1"
+    return "jpfeil/star-fusion:0.0.2"
 
 
 def reset_machine():
@@ -157,19 +160,19 @@ def process(manifest, outputs=".",
     """ Process on all the samples in 'manifest' """
 
     def log_error(message):
-        print message
+        print(message)
         with open("{}/errors.txt".format(outputs), "a") as error_log:
             error_log.write(message + "\n")
 
-    print "Processing starting on {}".format(env.host)
+    print("Processing starting on {}".format(env.host))
 
     # Each machine will process every #hosts samples
     for sample in itertools.islice(csv.DictReader(open(manifest, "rU"), delimiter="\t"),
                                    env.hosts.index(env.host),
                                    int(limit) if limit else None, len(env.hosts)):
         sample_id = sample["Submitter Sample ID"]
-        sample_files = sample["File Path"].split(",")
-        print "{} processing {}".format(env.host, sample_id)
+        sample_files = map(str.strip, sample["File Path"].split(","))
+        print("{} processing {}".format(env.host, sample_id))
 
         if os.path.exists("{}/{}".format(outputs, sample_id)):
             log_error("{}/{} already exists".format(outputs, sample_id))
@@ -178,17 +181,17 @@ def process(manifest, outputs=".",
         # See if all the files exist
         for sample in sample_files:
             if not os.path.isfile(sample):
-                log_error("{} does not exist".format(sample))
+                log_error("{} for {} does not exist".format(sample, sample_id))
                 continue
 
             # Hack to make sure sample name and file name match because RNASeq
             # puts the file name as the gene_id in the RSEM file and MedBook
             # uses that to name the sample.
-            if rnaseq == "True" and not os.path.basename(sample).startswith(sample_id):
-                log_error("Filename does not match sample id: {} {}".format(sample_id, sample))
-                continue
+            # if rnaseq == "True" and not os.path.basename(sample).startswith(sample_id):
+            #     log_error("Filename does not match sample id: {} {}".format(sample_id, sample))
+            #     continue
 
-        print "Resetting {}".format(env.host)
+        print("Resetting {}".format(env.host))
         reset_machine()
 
         methods = {"user": os.environ["USER"],
@@ -200,7 +203,7 @@ def process(manifest, outputs=".",
                    "pipelines": []}
 
         with cd("/mnt/data"):
-            # Copy fastqs
+            # Copy fastqs, fixing r1/r2 for R1/R2 if needed
             if (rnaseq == "True") or (fusion == "True"):
                 if len(sample_files) != 2:
                     log_error("Expected 2 samples files {} {}".format(sample_id, sample_files))
@@ -211,16 +214,19 @@ def process(manifest, outputs=".",
                         log_error("Unable to find file: {} {}".format(sample_id, fastq))
                         continue
                     if not exists("samples/{}".format(os.path.basename(fastq))):
-                        print "Copying files...."
-                        put(fastq, "samples/{}".format(os.path.basename(fastq)))
-                r1, r2 = [os.path.basename(f) for f in sample_files]
+                        print("Copying files....")
+                        put(fastq, "samples/{}".format(
+                            os.path.basename(fastq).replace("r1.", "R1.").replace("r2.", "R2.")))
+
+                r1, r2 = [os.path.basename(f).replace("r1.", "R1.").replace("r2.", "R2.")
+                          for f in sample_files]
 
             # If only running qc then copy bam as if it came from rnaseq
             if (qc == "True") and (rnaseq != "True") and (fusion != "True"):
                 if not sample_files[0].endswith(".bam"):
                     log_error("Expected bam for {} {}".format(sample_id, sample_files))
                     continue
-                print "Copying bam for {}".format(sample_id)
+                print("Copying bam for {}".format(sample_id))
                 put(sample_files[0],
                     "outputs/{}.sorted.bam".format(sample_id))
 
@@ -237,22 +243,38 @@ def process(manifest, outputs=".",
                 if prune != "True":
                     get("/mnt/data/outputs/{}.sorted.bam".format(sample_id), results)
 
-            # qc on rnaseq output bam
-            if qc == "True" or rnaseq == "True":  # qc ALWAYS if rnaseq
-                print "Starting qc for {}".format(sample_id)
+            # qc
+            if qc == "True":
+                print("Starting qc for {}".format(sample_id))
                 methods["pipelines"].append(
                     _run_qc("/mnt/data/outputs/{}.sorted.bam".format(sample_id), prune == "True"))
                 get("outputs/qc", results)
 
             # fusion
             if fusion == "True":
-                methods["pipelines"].append(_run_fusion(r1, r2), prune == "True")
+                methods["pipelines"].append(_run_fusion(r1, r2, prune == "True"))
                 get("outputs/fusion", results)
 
         # Write out methods
         methods["end"] = datetime.datetime.utcnow().isoformat()
         with open("{}/methods.json".format(results), "w") as f:
             f.write(json.dumps(methods, indent=4))
+
+
+@runs_once
+def check(manifest):
+    """ Check that each file in manifest exists """
+    for sample in csv.DictReader(open(manifest, "rU"), delimiter="\t"):
+        sample_id = sample["Submitter Sample ID"]
+        sample_files = map(str.strip, sample["File Path"].split(","))
+
+        # See if all the files exist
+        for sample in sample_files:
+            if not os.path.isfile(sample):
+                print("{} for {} does not exist".format(sample, sample_id))
+                continue
+            else:
+                print("{} exists".format(sample))
 
 
 def verify():
