@@ -97,8 +97,9 @@ def _run_rnaseq(r1, r2, name, prune):
             -v /mnt/data/samples:/samples \
             -v /mnt/data/references:/references \
             -v /var/run/docker.sock:/var/run/docker.sock \
-            quay.io/ucsc_cgl/rnaseq-cgl-pipeline:2.0.8 \
-            --save-bam \
+            quay.io/ucsc_cgl/rnaseq-cgl-pipeline:3.2.1-1 \
+            --logDebug \
+            --bamqc \
             --star /references/starIndex_hg38_no_alt.tar.gz \
             --rsem /references/rsem_ref_hg38_no_alt.tar.gz \
             --kallisto /references/kallisto_hg38.idx \
@@ -107,7 +108,7 @@ def _run_rnaseq(r1, r2, name, prune):
     # Generates name.tar.gz so untar and put in rnaseq folder
     run("tar -xzf outputs/{}.tar.gz -C outputs".format(name))
     run("mv outputs/{} outputs/rnaseq".format(name))
-    return "quay.io/ucsc_cgl/rnaseq-cgl-pipeline:2.0.8"
+    return "quay.io/ucsc_cgl/rnaseq-cgl-pipeline:3.2.1-1"
 
 
 def _run_qc(bam, prune):
